@@ -22,7 +22,7 @@ use winfsp::filesystem::{
     DirInfo, DirMarker, FileInfo, FileSecurity, FileSystemContext, OpenFileInfo, VolumeInfo,
     WideNameInfo,
 };
-use winfsp::host::{FileSystemHost, VolumeParams};
+use winfsp::host::{FileSystemHost, FineGuard, VolumeParams};
 use winfsp::{FspError, U16CStr};
 
 const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
@@ -439,7 +439,11 @@ impl FileSystemContext for WinFsContext {
             })
             .map_err(fs_error)?;
 
-        entries.sort_by(|a, b| a.name.expose_secret().cmp(b.name.expose_secret()));
+        entries.sort_by(|a, b| {
+            let a_name = a.name.expose_secret();
+            let b_name = b.name.expose_secret();
+            a_name.as_str().cmp(b_name.as_str())
+        });
 
         let marker = marker.inner().map(String::from_utf16_lossy);
         let mut cursor = 0u32;
@@ -735,7 +739,8 @@ impl MountPoint for MountPointImpl {
                     .filesystem_name("rencfs");
 
                 let mut host =
-                    FileSystemHost::new(volume_params, context).map_err(|err| err.to_string())?;
+                    FileSystemHost::<WinFsContext, FineGuard>::new(volume_params, context)
+                        .map_err(|err| err.to_string())?;
                 host.mount(&mountpoint).map_err(|err| err.to_string())?;
                 host.start().map_err(|err| err.to_string())?;
 
@@ -771,7 +776,7 @@ impl MountPoint for MountPointImpl {
         Ok(mount::MountHandle {
             inner: MountHandleInnerImpl {
                 event_tx: Some(event_tx),
-                done_rx,
+                done_rx: Some(done_rx),
             },
         })
     }
@@ -779,7 +784,7 @@ impl MountPoint for MountPointImpl {
 
 pub(in crate::mount) struct MountHandleInnerImpl {
     event_tx: Option<mpsc::Sender<HostEvent>>,
-    done_rx: oneshot::Receiver<io::Result<()>>,
+    done_rx: Option<oneshot::Receiver<io::Result<()>>>,
 }
 
 impl Unpin for MountHandleInnerImpl {}
@@ -788,7 +793,12 @@ impl Future for MountHandleInnerImpl {
     type Output = io::Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match Pin::new(&mut self.done_rx).poll(cx) {
+        let done_rx = self
+            .done_rx
+            .as_mut()
+            .expect("mount completion receiver missing");
+
+        match Pin::new(done_rx).poll(cx) {
             Poll::Ready(Ok(result)) => Poll::Ready(result),
             Poll::Ready(Err(err)) => Poll::Ready(Err(io::Error::other(err.to_string()))),
             Poll::Pending => Poll::Pending,
@@ -811,7 +821,12 @@ impl MountHandleInner for MountHandleInnerImpl {
             let _ = event_tx.send(HostEvent::Stop);
         }
 
-        match self.done_rx.await {
+        let done_rx = self
+            .done_rx
+            .take()
+            .ok_or_else(|| io::Error::other("mount completion receiver missing"))?;
+
+        match done_rx.await {
             Ok(result) => result,
             Err(err) => Err(io::Error::other(err.to_string())),
         }
