@@ -1,0 +1,31 @@
+name: windows-winfsp-check
+
+on:
+  push:
+    branches:
+      - feature/windows-winfsp
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install compatible Rust nightly
+        shell: pwsh
+        run: |
+          rustup toolchain install nightly-2026-05-03 --component rustfmt --component clippy
+          rustup override set nightly-2026-05-03
+          rustc --version
+          cargo --version
+
+      - name: Cargo check
+        run: cargo check --all
+
+      - name: Format check
+        run: cargo fmt --all -- --check
