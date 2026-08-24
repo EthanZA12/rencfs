@@ -29,3 +29,17 @@ jobs:
 
       - name: Format check
         run: cargo fmt --all -- --check
+
+      - name: Build Windows executable
+        shell: pwsh
+        env:
+          WINFSP_DLL_OUTPUT_PATH: target/debug
+        run: cargo build --all
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: rencfs-windows-debug
+          path: |
+            target/debug/rencfs.exe
+            target/debug/*.dll
