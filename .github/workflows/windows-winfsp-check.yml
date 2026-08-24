@@ -36,6 +36,120 @@ jobs:
           WINFSP_DLL_OUTPUT_PATH: target/debug
         run: cargo build --all
 
+      - name: Install WinFSP
+        shell: pwsh
+        run: |
+          choco install winfsp -y --no-progress
+          Write-Host "WinFSP installed"
+
+      - name: Windows WinFSP runtime smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $dataDir = Join-Path $env:RUNNER_TEMP "rencfs-data"
+          $stdout = Join-Path $env:RUNNER_TEMP "rencfs-stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "rencfs-stderr.log"
+
+          New-Item -ItemType Directory -Force $dataDir | Out-Null
+
+          $env:RENCFS_PASSWORD = "github-actions-test-password"
+
+          Write-Host "Starting rencfs..."
+          $proc = Start-Process `
+            -FilePath ".\target\debug\rencfs.exe" `
+            -ArgumentList @(
+              "--log-level", "DEBUG",
+              "mount",
+              "--mount-point", "R:",
+              "--data-dir", $dataDir
+            ) `
+            -PassThru `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr
+
+          try {
+            Write-Host "Waiting for R: mount..."
+
+            $mounted = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              if ($proc.HasExited) {
+                Write-Host "rencfs exited unexpectedly with code $($proc.ExitCode)"
+                if (Test-Path $stdout) { Get-Content $stdout }
+                if (Test-Path $stderr) { Get-Content $stderr }
+                throw "rencfs terminated before mounting"
+              }
+
+              if (Test-Path "R:\") {
+                $mounted = $true
+                break
+              }
+
+              Start-Sleep -Seconds 1
+            }
+
+            if (-not $mounted) {
+              if (Test-Path $stdout) { Get-Content $stdout }
+              if (Test-Path $stderr) { Get-Content $stderr }
+              throw "R: was not mounted within 30 seconds"
+            }
+
+            Write-Host "===== MOUNT OK ====="
+
+            New-Item -ItemType Directory "R:\folder" | Out-Null
+
+            "rencfs Windows GitHub Actions test" |
+              Set-Content "R:\hello.txt"
+
+            $content = (Get-Content "R:\hello.txt" -Raw).Trim()
+
+            if ($content -ne "rencfs Windows GitHub Actions test") {
+              throw "Initial read did not match written content"
+            }
+
+            Write-Host "===== WRITE + READ OK ====="
+
+            Move-Item "R:\hello.txt" "R:\folder\renamed.txt"
+
+            $renamed = (Get-Content "R:\folder\renamed.txt" -Raw).Trim()
+
+            if ($renamed -ne "rencfs Windows GitHub Actions test") {
+              throw "Read after rename did not match"
+            }
+
+            Write-Host "===== RENAME + READ OK ====="
+
+            Get-ChildItem "R:\" -Recurse
+
+            Remove-Item "R:\folder\renamed.txt"
+            Remove-Item "R:\folder"
+
+            if (Test-Path "R:\folder") {
+              throw "Directory deletion failed"
+            }
+
+            Write-Host "===== DELETE OK ====="
+            Write-Host "===== WINDOWS WINFSP SMOKE TEST PASSED ====="
+          }
+          finally {
+            if (-not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force
+              $proc.WaitForExit()
+            }
+
+            Start-Sleep -Seconds 3
+
+            if (Test-Path "R:\") {
+              Write-Warning "R: still visible immediately after process termination"
+            }
+
+            Write-Host "===== RENCFS STDOUT ====="
+            if (Test-Path $stdout) { Get-Content $stdout }
+
+            Write-Host "===== RENCFS STDERR ====="
+            if (Test-Path $stderr) { Get-Content $stderr }
+          }
+
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
