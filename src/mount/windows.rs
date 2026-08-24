@@ -120,7 +120,13 @@ fn path_components(file_name: &U16CStr) -> Vec<String> {
 fn access_modes(granted_access: u32, read_only: bool) -> (bool, bool) {
     let write =
         !read_only && granted_access & (FILE_WRITE_DATA | FILE_APPEND_DATA | GENERIC_WRITE) != 0;
-    let read = granted_access & (FILE_READ_DATA | GENERIC_READ) != 0 || !write;
+
+    // Keep an internal read handle for writable files. EncryptedFs uses
+    // read/modify/write semantics for encrypted content and Windows cached
+    // I/O may require reads during a writable file lifecycle. WinFSP still
+    // enforces the caller's original Windows access mask.
+    let read = true;
+
     (read, write)
 }
 
