@@ -43,3 +43,28 @@ pub fn open_atomic_write(file: &Path) -> io::Result<AtomicWriteFile> {
     opt.preserve_mode(true).preserve_owner(true);
     opt.open(file)
 }
+
+/// Flush directory metadata where the platform supports opening
+/// directories as regular file handles.
+///
+/// Windows does not support POSIX-style directory fsync through
+/// `std::fs::File::open`, which returns AccessDenied for directories.
+/// File contents are still individually synced before this is called.
+pub fn sync_dir(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        fs::File::open(path)?.sync_all()
+    }
+
+    #[cfg(windows)]
+    {
+        let _ = path;
+        Ok(())
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}

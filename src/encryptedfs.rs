@@ -726,13 +726,12 @@ impl EncryptedFs {
                             // these operations are a bit slow, but are necessary to make sure the file is correctly created
                             // i.e. creating 100 files takes 0.965 sec with sync_all and 0.130 sec without
                             file.sync_all()?;
-                            File::open(
+                            fs_util::sync_dir(
                                 self_clone
                                     .contents_path(attr.ino)
                                     .parent()
                                     .expect("oops, we don't have a parent"),
-                            )?
-                            .sync_all()?;
+                            )?;
                             Ok::<(), FsError>(())
                         });
                     }
@@ -1527,7 +1526,7 @@ impl EncryptedFs {
             let write_guard = lock.write().await;
             let file = writer.finish()?;
             file.sync_all()?;
-            File::open(self.contents_path(ctx.ino).parent().unwrap())?.sync_all()?;
+            fs_util::sync_dir(self.contents_path(ctx.ino).parent().unwrap())?;
             // write attr only here to avoid serializing it multiple times while writing
             // it will merge time fields with existing data because it might got change while we kept the handle
             let ino = ctx.ino;
@@ -1727,7 +1726,7 @@ impl EncryptedFs {
             let write_guard = lock.write().await;
             ctx.writer.as_mut().expect("writer is missing").flush()?;
             File::open(self.contents_path(ctx.ino))?.sync_all()?;
-            File::open(self.contents_path(ctx.ino).parent().unwrap())?.sync_all()?;
+            fs_util::sync_dir(self.contents_path(ctx.ino).parent().unwrap())?;
             drop(write_guard);
             let ino = ctx.ino;
             drop(ctx);
@@ -1911,7 +1910,7 @@ impl EncryptedFs {
             }
             file.commit()?;
         }
-        File::open(file_path.parent().unwrap())?.sync_all()?;
+        fs_util::sync_dir(file_path.parent().unwrap())?;
 
         let now = SystemTime::now();
         let set_attr = SetFileAttr::default()
@@ -1962,7 +1961,7 @@ impl EncryptedFs {
                 let mut writer = ctx.writer.take().unwrap();
                 let file = writer.finish()?;
                 file.sync_all()?;
-                File::open(self.contents_path(ctx.ino).parent().unwrap())?.sync_all()?;
+                fs_util::sync_dir(self.contents_path(ctx.ino).parent().unwrap())?;
                 let handle = *handle;
                 let set_attr: SetFileAttr = ctx.attr.clone().into();
                 drop(ctx);
@@ -2210,7 +2209,7 @@ impl EncryptedFs {
                 let writer = ctx.writer.as_mut().unwrap();
                 let file = writer.finish()?;
                 file.sync_all()?;
-                File::open(self.contents_path(ctx.ino).parent().unwrap())?.sync_all()?;
+                fs_util::sync_dir(self.contents_path(ctx.ino).parent().unwrap())?;
                 let set_attr: Option<SetFileAttr> = if save_attr {
                     Some(ctx.attr.clone().into())
                 } else {
@@ -2514,7 +2513,7 @@ fn read_or_create_key(
         bincode::serialize_into(&mut file, &salt)?;
         file.flush()?;
         file.sync_all()?;
-        File::open(salt_path.parent().expect("oops, we don't have a parent"))?.sync_all()?;
+        fs_util::sync_dir(salt_path.parent().expect("oops, we don't have a parent"))?;
         salt
     };
     // derive key from password
@@ -2544,7 +2543,7 @@ fn read_or_create_key(
         bincode::serialize_into(&mut writer, &key)?;
         let file = writer.finish()?;
         file.sync_all()?;
-        File::open(key_path.parent().unwrap())?.sync_all()?;
+        fs_util::sync_dir(key_path.parent().unwrap())?;
         Ok(SecretBox::new(Box::new(key)))
     }
 }
