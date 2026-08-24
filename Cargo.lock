@@ -2225,9 +2225,8 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "shush-rs"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9de8f82d4a4085f9ea4ab8d493e6e62ab871b2bf446d4d90633b58ca400aedff"
+version = "0.1.11"
+source = "git+https://github.com/EthanZA12/shush-rs.git?rev=4bb87552bde0d9eb8bbc98d9fc093863e9cb01d4#4bb87552bde0d9eb8bbc98d9fc093863e9cb01d4"
 dependencies = [
  "errno",
  "libc",
@@ -2787,7 +2786,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

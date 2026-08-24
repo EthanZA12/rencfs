@@ -250,3 +250,6 @@ assets = [
 ]
 [package.metadata.generate-rpm.requires]
 fuse3 = "*"
+
+[patch.crates-io]
+shush-rs = { git = "https://github.com/EthanZA12/shush-rs.git", rev = "4bb87552bde0d9eb8bbc98d9fc093863e9cb01d4" }
