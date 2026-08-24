@@ -1135,10 +1135,8 @@ impl EncryptedFs {
         let entry = entry.unwrap();
         let name = entry.file_name().to_string_lossy().to_string();
         let name = {
-            if name == "$." {
-                SecretString::new(Box::new(".".into()))
-            } else if name == "$.." {
-                SecretString::from_str("..").unwrap()
+            if let Some(special_name) = crypto::decode_special_file_name(&name) {
+                SecretString::from_str(special_name).unwrap()
             } else {
                 // try from cache
                 let lock = self.get_dir_entries_name_cache().await?;

@@ -1,4 +1,4 @@
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io;
 use std::io::{Read, Seek, Write};
 use std::num::ParseIntError;
@@ -32,6 +32,40 @@ pub mod read;
 pub mod write;
 
 pub static BASE64: GeneralPurpose = GeneralPurpose::new(&STANDARD, NO_PAD);
+
+/// Translate the logical dot-entry sentinels into backing-store filenames.
+///
+/// Unix keeps the historical `$.` / `$..` representation for compatibility.
+/// Windows cannot reliably store filenames ending in dots, so it uses
+/// `$dot` / `$dotdot` instead.
+fn storage_special_file_name(name: &str) -> Option<&'static str> {
+    match name {
+        "." | "$." => {
+            if cfg!(windows) {
+                Some("$dot")
+            } else {
+                Some("$.")
+            }
+        }
+        ".." | "$.." => {
+            if cfg!(windows) {
+                Some("$dotdot")
+            } else {
+                Some("$..")
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Decode both the historical Unix and portable Windows special-entry names.
+pub(crate) fn decode_special_file_name(name: &str) -> Option<&'static str> {
+    match name {
+        "$." | "$dot" => Some("."),
+        "$.." | "$dotdot" => Some(".."),
+        _ => None,
+    }
+}
 
 #[derive(
     Debug, Clone, Copy, EnumIter, EnumString, Display, Serialize, Deserialize, PartialEq, Eq,
@@ -241,27 +275,23 @@ pub fn encrypt_file_name(
 ) -> FsResult<String> {
     let secret_string = name.expose_secret();
 
-    match secret_string.as_str() {
-        "$." | "$.." => Ok(secret_string.clone()),
-        "." | ".." => Ok(format!("${secret_string}")),
-        _ => {
-            let secret = SecretString::from_str(&secret_string)
-                .map_err(|err| Error::GenericString(err.to_string()))?;
-            let mut encrypted = encrypt(&secret, cipher, key)?;
-            encrypted = encrypted.replace('/', "|");
-
-            Ok(encrypted)
-        }
+    if let Some(special) = storage_special_file_name(secret_string.as_str()) {
+        return Ok(special.to_owned());
     }
+
+    let secret = SecretString::from_str(&secret_string)
+        .map_err(|err| Error::GenericString(err.to_string()))?;
+    let mut encrypted = encrypt(&secret, cipher, key)?;
+    encrypted = encrypted.replace('/', "|");
+
+    Ok(encrypted)
 }
 
 #[allow(clippy::missing_errors_doc)]
 #[must_use]
 pub fn hash_file_name(name: &SecretString) -> String {
-    if *name.expose_secret() == "$." || *name.expose_secret() == "$.." {
-        name.expose_secret().clone()
-    } else if *name.expose_secret() == "." || *name.expose_secret() == ".." {
-        format!("${}", name.expose_secret())
+    if let Some(special) = storage_special_file_name(name.expose_secret().as_str()) {
+        special.to_owned()
     } else {
         hex::encode(hash_secret_string(name))
     }
