@@ -32,9 +32,23 @@ jobs:
 
       - name: Build Windows executable
         shell: pwsh
-        env:
-          WINFSP_DLL_OUTPUT_PATH: target/debug
-        run: cargo build --all
+        run: |
+          $env:WINFSP_DLL_OUTPUT_PATH = Join-Path $env:GITHUB_WORKSPACE "target\\debug"
+
+          Write-Host "WinFSP DLL output: $env:WINFSP_DLL_OUTPUT_PATH"
+
+          cargo build --all
+
+          Write-Host ""
+          Write-Host "===== WINDOWS BUILD OUTPUT ====="
+          Get-ChildItem .\\target\\debug\\rencfs.exe
+          Get-ChildItem .\\target\\debug\\*.dll
+
+          if (-not (Test-Path ".\\target\\debug\\winfsp-x64.dll")) {
+            throw "winfsp-x64.dll was not copied beside rencfs.exe"
+          }
+
+          Write-Host "===== WINFSP DLL PRESENT ====="
 
       - name: Install WinFSP
         shell: pwsh
