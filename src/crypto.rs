@@ -376,7 +376,7 @@ where
     let mut file = fs_util::open_atomic_write(file)?;
     file = serialize_encrypt_into(file, value, cipher, key)?;
     file.commit()?;
-    File::open(parent)?.sync_all()?;
+    fs_util::sync_dir(parent)?;
     Ok(())
 }
 
